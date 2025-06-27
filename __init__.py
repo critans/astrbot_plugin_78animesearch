@@ -1,9 +1,5 @@
 
 #### 3. 插件入口 `__init__.py`
-
-
-**`__init__.py`:**
-```python
 # 从 main.py 文件中导入的插件主类
 from .main import Dm78Plugin
 
