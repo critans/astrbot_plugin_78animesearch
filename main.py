@@ -11,11 +11,10 @@ from urllib3.exceptions import InsecureRequestWarning
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
-# 导入官方推荐的消息组件模块，并简写为 Comp
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 (这部分无需改动) ---
+# --- 爬虫代码部分 (无变化) ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -82,9 +81,8 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
             
     return products
 
-# --- astrbot 插件主类 (遵照官方文档) ---
+# --- astrbot 插件主类 ---
 
-# 注意：这里没有 @register 装饰器，符合你的开发阶段要求
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -94,32 +92,31 @@ class MyPlugin(Star):
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
-        """
-        处理用户发送的 "78dm [关键词]" 命令
-        :param event: 消息事件对象
-        :param keyword: astrbot自动注入的、跟在命令后面的字符串参数
-        """
         if not keyword:
             yield event.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
             return
-
-        # 使用 await event.send_message 发送一个等待消息，提升用户体验
-        await event.send_message(f"正在为“{keyword}”搜索模型信息，请稍候...")
+        
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!                       这 里 是 修 改 点                       !!
+        # !! 1. 使用 self.context.send_message
+        # !! 2. 将 event 作为第一个参数 (origin)
+        # !! 3. 将消息内容包装在 [Comp.Plain(...)] 列表中
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        await self.context.send_message(event, [Comp.Plain(text=f"正在为“{keyword}”搜索模型信息，请稍候...")])
 
         try:
-            # 使用 run_in_executor 在独立线程中运行同步的爬虫代码，避免阻塞
             products = await self.context.loop.run_in_executor(
                 None, fetch_products_from_78dm, keyword, 1
             )
 
             if not products:
-                # 使用 yield 发送最终的文本结果
                 yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
                 return
+            
+            # 同样地，这里也进行修正
+            await self.context.send_message(event, [Comp.Plain(text=f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)])
 
             results_to_show = products[:3]
-            await event.send_message(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
-
             for product in results_to_show:
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
@@ -130,16 +127,15 @@ class MyPlugin(Star):
                     f"链接: {product.get('product_url', 'N/A')}"
                 )
                 
-                # 使用 Comp 构建消息链（一个列表）
                 message_chain = []
                 if image_url := product.get('image_url'):
                     message_chain.append(Comp.Image.fromUrl(url=image_url))
                 
                 message_chain.append(Comp.Plain(text=text_part))
-
-                # 使用 await event.send_message 发送构建好的消息链
-                await event.send_message(message_chain)
-                await asyncio.sleep(1) # 短暂延迟，避免发送过快
+                
+                # 最后，这里也进行修正
+                await self.context.send_message(event, message_chain)
+                await asyncio.sleep(1)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
