@@ -12,7 +12,7 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
 # 导入官方推荐的消息组件模块，并简写为 Comp
-from astrbot.api.message_components import as Comp
+import astrbot.api.message_components as Comp
 
 
 # --- 爬虫代码部分 (这部分无需改动) ---
