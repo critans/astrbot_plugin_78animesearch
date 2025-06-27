@@ -87,12 +87,11 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "1.3-dev"
+        self.version = "1.3"
         self.author = "critans"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
-        # 再次强调：根据报错日志，这里的 self 是 event 对象
         the_real_event_obj = self
 
         if not keyword:
@@ -102,10 +101,6 @@ class MyPlugin(Star):
         yield the_real_event_obj.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
 
         try:
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # !!                       最 终 的 正 确 方 法                     !!
-            # !!           直接使用 asyncio.get_running_loop()                !!
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             loop = asyncio.get_running_loop()
             products = await loop.run_in_executor(
                 None, fetch_products_from_78dm, keyword, 1
@@ -130,7 +125,11 @@ class MyPlugin(Star):
                 
                 message_chain = []
                 if image_url := product.get('image_url'):
-                    message_chain.append(Comp.Image.fromUrl(url=image_url))
+                    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    # !!                       最终的大小写修正                         !!
+                    # !!                    fromUrl -> fromURL                        !!
+                    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    message_chain.append(Comp.Image.fromURL(url=image_url))
                 
                 message_chain.append(Comp.Plain(text=text_part))
                 
