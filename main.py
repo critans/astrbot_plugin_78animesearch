@@ -7,22 +7,16 @@ from urllib3.exceptions import InsecureRequestWarning
 import requests
 from bs4 import BeautifulSoup
 
-# --- 导入最新的 AstrBot API ---
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger  # 使用 astrbot 提供的 logger 接口
-
-# -------------------- 爬虫辅助函数部分 (保持不变) --------------------
+from astrbot.api import logger
 
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def fetch_products_from_78dm(keyword: str):
-    """从78dm.net抓取产品信息 (阻塞函数)"""
     products = []
     encoded_keyword = urllib.parse.quote(keyword)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     url = f"https://www.78dm.net/search?page=1&type=3&keyword={encoded_keyword}"
     logger.info(f"[78dm_plugin] 正在请求 URL: {url}")
     try:
@@ -56,57 +50,42 @@ def fetch_products_from_78dm(keyword: str):
         return None
     return products
 
-# -------------------- AstrBot 插件主类 (全新API风格) --------------------
-
-# 使用 @register 装饰器直接注册插件，取代了旧的 PluginLoad 方式
-@register(
-    "78dm_search",
-    author="critans & AI",
-    version="2.0.0",
-    description="通过 '78dm [关键词]' 命令在 78dm.net 搜索模玩信息。"
-)
+# --- 关键修正 ---
+# 将 @register 装饰器修改为严格按照位置参数传递
+# @register(
+#     "78dm_search",                                     # 1. 插件ID
+#     "critans & AI",                                    # 2. 作者
+#     "通过 '78dm [关键词]' 命令在 78dm.net 搜索模玩信息。",  # 3. 描述
+#     "2.1.0"                                            # 4. 版本
+# )
 class Dm78Plugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        # 可以在这里进行一些初始化操作
 
-    # 使用 @filter.command 装饰器注册命令
-    # astrbot 会自动处理命令和参数的分割
     @filter.command("78dm")
     async def dm78_handler(self, event: AstrMessageEvent):
-        """响应 '78dm' 命令，搜索78动漫网。"""
-        
-        # 1. 提取参数
-        # 新的 API 会将命令后的内容作为参数，我们可以直接从 event 中获取
         keyword = event.get_command_args()
-
-        # 2. 验证输入
         if not keyword:
             yield event.plain_result("请提供关键词！\n用法: 78dm [你要搜索的内容]")
             return
-
-        # 3. 在独立线程中执行耗时的网络请求
+        
+        yield event.plain_result(f"收到，正在为指挥官搜索“{keyword}”...")
+        
         loop = asyncio.get_running_loop()
         try:
-            # yield 一个即时反馈，提升用户体验
-            yield event.plain_result(f"收到，正在为指挥官搜索“{keyword}”...")
-            
             products = await loop.run_in_executor(None, fetch_products_from_78dm, keyword)
         except Exception as e:
             logger.error(f"[78dm_plugin] 线程执行爬虫时发生严重错误: {e}")
             yield event.plain_result(f"搜索“{keyword}”时发生内部错误，请联系管理员。")
             return
 
-        # 4. 根据爬虫结果，构建最终回复
         if products is None:
             yield event.plain_result(f"搜索“{keyword}”时网络似乎出了点问题，请稍后再试。")
             return
-
         if not products:
             yield event.plain_result(f"呜... 在78动漫网没有找到关于“{keyword}”的最新资讯。")
             return
 
-        # 5. 格式化输出
         results_to_show = products[:5]
         response_parts = [f"为您找到关于“{keyword}”的 {len(results_to_show)} 条结果：\n--------------------"]
         for i, prod in enumerate(results_to_show, 1):
@@ -121,10 +100,4 @@ class Dm78Plugin(Star):
         response_parts.append("--------------------\n数据来源: 78dm.net")
         
         final_response = "\n".join(response_parts)
-        
-        # 6. 使用 yield event.plain_result() 发送最终结果
         yield event.plain_result(final_response)
-
-    async def terminate(self):
-        """插件被卸载或停用时调用，可选。"""
-        pass
