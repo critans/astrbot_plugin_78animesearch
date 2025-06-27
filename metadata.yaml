@@ -1,5 +1,5 @@
 name: 78animeSearch # 这是你的插件的唯一识别名。
-desc: 通过 '78search [关键词]' 命令在 78动漫模型网搜索模玩信息。。 # 插件简短描述
+desc: 通过 '78dm [关键词]' 命令在 78动漫模型网搜索模玩信息。。 # 插件简短描述
 version: v1.3 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: critans # 作者
 repo: https://github.com/critans/astrbot_plugin_78animesearch # 插件的仓库地址
