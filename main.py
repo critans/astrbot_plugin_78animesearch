@@ -81,7 +81,7 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
             
     return products
 
-# --- astrbot 插件主类 (修正函数签名) ---
+# --- astrbot 插件主类 (修正参数错位问题) ---
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
@@ -93,28 +93,40 @@ class MyPlugin(Star):
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # !!                       最 终 的 正 确 签 名                     !!
-        # !! 必须同时包含 self, event, 和自动注入的参数 keyword           !!
+        # !!                       最终的、反直觉的修正                     !!
+        # !! 由于框架的参数注入问题，这里的 self 实际上是 event 对象,        !!
+        # !! 而 event 实际上是 context 对象。                              !!
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        # 为代码可读性，我们先进行“拨乱反正”
+        real_self = self # 这个才是真正的插件实例 self
+        real_event = event # 这个才是真正的事件 event
+
+        # 但根据报错，实际传入的对象是错位的
+        # self -> event object
+        # event -> context object
         
+        # 因此我们这样使用：
+        the_real_event_obj = self
+        the_real_context_obj = event
+
         if not keyword:
-            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
+            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
             return
         
-        # 发送等待消息，这次使用 yield
-        yield event.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
+        yield the_real_event_obj.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
 
         try:
-            # self.context 现在可以被正确访问了
-            products = await self.context.loop.run_in_executor(
+            # 使用 context 的 loop 来执行耗时操作
+            products = await the_real_context_obj.loop.run_in_executor(
                 None, fetch_products_from_78dm, keyword, 1
             )
 
             if not products:
-                yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
+                yield the_real_event_obj.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
                 return
 
-            yield event.plain_result(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
+            yield the_real_event_obj.plain_result(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
 
             results_to_show = products[:3]
             for product in results_to_show:
@@ -133,10 +145,9 @@ class MyPlugin(Star):
                 
                 message_chain.append(Comp.Plain(text=text_part))
                 
-                # 使用 event.chain_result 来 yield 一个消息链
-                yield event.chain_result(message_chain)
+                yield the_real_event_obj.chain_result(message_chain)
                 await asyncio.sleep(1)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
-            yield event.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
+            yield the_real_event_obj.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
