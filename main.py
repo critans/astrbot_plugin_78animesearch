@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from urllib3.exceptions import InsecureRequestWarning
 
 # --- astrbot 官方标准 API 导入 ---
-from astrbot.api.event import filter
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
@@ -81,7 +81,7 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
             
     return products
 
-# --- astrbot 插件主类 (最终正确版本) ---
+# --- astrbot 插件主类 (修正函数签名) ---
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
@@ -91,25 +91,30 @@ class MyPlugin(Star):
         self.author = "critans"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
-    async def handle_78dm_search(self, keyword: str):
-        # 注意看！函数签名里已经没有 event 了！
+    async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!                       最 终 的 正 确 签 名                     !!
+        # !! 必须同时包含 self, event, 和自动注入的参数 keyword           !!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
         if not keyword:
-            # 直接 yield 结果，框架会自动发送
-            yield Comp.Plain(text="请提供要搜索的关键词！\n用法：78dm [关键词]")
+            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
             return
+        
+        # 发送等待消息，这次使用 yield
+        yield event.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
 
         try:
-            # 这里是唯一不能 yield 的地方，因为需要拿到爬虫的返回结果
+            # self.context 现在可以被正确访问了
             products = await self.context.loop.run_in_executor(
                 None, fetch_products_from_78dm, keyword, 1
             )
 
             if not products:
-                yield Comp.Plain(text=f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
+                yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
                 return
 
-            # 发送一个介绍性的消息
-            yield Comp.Plain(text=f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
+            yield event.plain_result(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
 
             results_to_show = products[:3]
             for product in results_to_show:
@@ -128,10 +133,10 @@ class MyPlugin(Star):
                 
                 message_chain.append(Comp.Plain(text=text_part))
                 
-                # 每一次循环都 yield 一个结果，框架会把它们逐条发出
-                yield message_chain
-                await asyncio.sleep(1) # 短暂延迟，避免发送过快
+                # 使用 event.chain_result 来 yield 一个消息链
+                yield event.chain_result(message_chain)
+                await asyncio.sleep(1)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
-            yield Comp.Plain(text="查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
+            yield event.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
