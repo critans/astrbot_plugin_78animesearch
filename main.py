@@ -81,7 +81,7 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
             
     return products
 
-# --- astrbot 插件主类 (修正参数错位问题) ---
+# --- astrbot 插件主类 ---
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
@@ -92,23 +92,8 @@ class MyPlugin(Star):
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # !!                       最终的、反直觉的修正                     !!
-        # !! 由于框架的参数注入问题，这里的 self 实际上是 event 对象,        !!
-        # !! 而 event 实际上是 context 对象。                              !!
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        # 为代码可读性，我们先进行“拨乱反正”
-        real_self = self # 这个才是真正的插件实例 self
-        real_event = event # 这个才是真正的事件 event
-
-        # 但根据报错，实际传入的对象是错位的
-        # self -> event object
-        # event -> context object
-        
-        # 因此我们这样使用：
+        # 再次强调：根据报错日志，这里的 self 是 event 对象
         the_real_event_obj = self
-        the_real_context_obj = event
 
         if not keyword:
             yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
@@ -117,8 +102,12 @@ class MyPlugin(Star):
         yield the_real_event_obj.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
 
         try:
-            # 使用 context 的 loop 来执行耗时操作
-            products = await the_real_context_obj.loop.run_in_executor(
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # !!                       最 终 的 正 确 方 法                     !!
+            # !!           直接使用 asyncio.get_running_loop()                !!
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            loop = asyncio.get_running_loop()
+            products = await loop.run_in_executor(
                 None, fetch_products_from_78dm, keyword, 1
             )
 
