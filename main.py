@@ -7,6 +7,7 @@ from urllib3.exceptions import InsecureRequestWarning
 import requests
 from bs4 import BeautifulSoup
 
+# 核心模块导入保持不变
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
@@ -50,13 +51,11 @@ def fetch_products_from_78dm(keyword: str):
         return None
     return products
 
-# --- 关键修正 ---
-# 将 @register 装饰器修改为严格按照位置参数传递
 # @register(
-#     "78dm_search",                                     # 1. 插件ID
-#     "critans & AI",                                    # 2. 作者
-#     "通过 '78dm [关键词]' 命令在 78dm.net 搜索模玩信息。",  # 3. 描述
-#     "2.1.0"                                            # 4. 版本
+#     "78dm_search",
+#     "critans & AI",
+#     "通过 '78dm [关键词]' 命令在 78dm.net 搜索模玩信息。",
+#     "3.0.0"  # Final Version
 # )
 class Dm78Plugin(Star):
     def __init__(self, context: Context):
@@ -64,11 +63,30 @@ class Dm78Plugin(Star):
 
     @filter.command("78dm")
     async def dm78_handler(self, event: AstrMessageEvent):
-        keyword = event.get_command_args()
+        """响应 '78dm' 命令，搜索78动漫网。"""
+        
+        # --- 关键修正 ---
+        # 1. 直接获取完整的消息文本
+        full_text = event.message_str
+
+        # 2. 手动解析出命令后的参数
+        # 我们定位 "78dm" 的位置，并取其后的所有内容
+        command_prefix = "78dm"
+        try:
+            # 找到命令前缀，然后从它后面开始切片
+            keyword_start_index = full_text.index(command_prefix) + len(command_prefix)
+            keyword = full_text[keyword_start_index:].strip()
+        except ValueError:
+            # 理论上 @filter.command 保证了命令存在，但以防万一
+            logger.error(f"[78dm_plugin] 命令 '{command_prefix}' 不在消息 '{full_text}' 中，这是一个逻辑错误。")
+            return
+        
+        # 3. 验证输入
         if not keyword:
             yield event.plain_result("请提供关键词！\n用法: 78dm [你要搜索的内容]")
             return
         
+        # 后续逻辑保持不变，但更加可靠
         yield event.plain_result(f"收到，正在为指挥官搜索“{keyword}”...")
         
         loop = asyncio.get_running_loop()
