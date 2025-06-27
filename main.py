@@ -97,12 +97,11 @@ class MyPlugin(Star):
             return
         
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # !!                       这 里 是 修 改 点                       !!
+        # !!                       这 里 是 最 终 修 正                     !!
         # !! 1. 使用 self.context.send_message
-        # !! 2. 将 event 作为第一个参数 (origin)
-        # !! 3. 将消息内容包装在 [Comp.Plain(...)] 列表中
+        # !! 2. 第一个参数使用 event.unified_msg_origin
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        await self.context.send_message(event, [Comp.Plain(text=f"正在为“{keyword}”搜索模型信息，请稍候...")])
+        await self.context.send_message(event.unified_msg_origin, [Comp.Plain(text=f"正在为“{keyword}”搜索模型信息，请稍候...")])
 
         try:
             products = await self.context.loop.run_in_executor(
@@ -113,8 +112,7 @@ class MyPlugin(Star):
                 yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
                 return
             
-            # 同样地，这里也进行修正
-            await self.context.send_message(event, [Comp.Plain(text=f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)])
+            await self.context.send_message(event.unified_msg_origin, [Comp.Plain(text=f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)])
 
             results_to_show = products[:3]
             for product in results_to_show:
@@ -133,8 +131,7 @@ class MyPlugin(Star):
                 
                 message_chain.append(Comp.Plain(text=text_part))
                 
-                # 最后，这里也进行修正
-                await self.context.send_message(event, message_chain)
+                await self.context.send_message(event.unified_msg_origin, message_chain)
                 await asyncio.sleep(1)
 
         except Exception as e:
