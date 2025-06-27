@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 (无变化) ---
+# --- 爬虫代码部分 (修正图片URL处理) ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -27,7 +27,21 @@ def extract_product_info_from_html(product_element):
         manufacturer = product_element.select_one('td.brand').text.strip() if product_element.select_one('td.brand') else "未知厂商"
         release_date = product_element.select_one('td.sale-time').text.strip() if product_element.select_one('td.sale-time') else "未知发售"
         price = product_element.select_one('td.price\\>').text.strip() if product_element.select_one('td.price\\>') else "未知价格"
-        image_url = product_element.select_one('img.single-cover')['src'] if product_element.select_one('img.single-cover') else ""
+        
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!                       这 里 是 最 终 修 正                     !!
+        # !!           确保 image_url 始终是完整的绝对路径                  !!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        image_url = ""
+        img_element = product_element.select_one('img.single-cover')
+        if img_element and 'src' in img_element.attrs:
+            src = img_element['src']
+            if src.startswith('//'):
+                image_url = 'https:' + src
+            elif src.startswith('/'):
+                image_url = 'https://www.78dm.net' + src
+            else:
+                image_url = src
         
         product_url = ""
         link_element = product_element.parent
@@ -87,7 +101,7 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "1.3"
+        self.version = "1.3-final"
         self.author = "critans"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
@@ -124,11 +138,8 @@ class MyPlugin(Star):
                 )
                 
                 message_chain = []
+                # 使用 if...else... 来确保 image_url 存在且不为空
                 if image_url := product.get('image_url'):
-                    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    # !!                       最终的大小写修正                         !!
-                    # !!                    fromUrl -> fromURL                        !!
-                    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     message_chain.append(Comp.Image.fromURL(url=image_url))
                 
                 message_chain.append(Comp.Plain(text=text_part))
