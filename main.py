@@ -1,122 +1,54 @@
 import asyncio
 import logging
-import urllib.parse
-import warnings
-from urllib3.exceptions import InsecureRequestWarning
 
-import requests
-from bs4 import BeautifulSoup
-
-# 核心模块导入
-from astrbot.api.event import filter, AstrMessageEvent
+# 导入 AstrBot 核心模块
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 
-warnings.simplefilter('ignore', InsecureRequestWarning)
-
-# 爬虫函数部分保持不变，它是稳定工作的
-def fetch_products_from_78dm(keyword: str):
-    products = []
-    encoded_keyword = urllib.parse.quote(keyword)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    url = f"https://www.78dm.net/search?page=1&type=3&keyword={encoded_keyword}"
-    logger.info(f"[78dm_plugin] 正在请求 URL: {url}")
-    try:
-        response = requests.get(url, headers=headers, verify=False, timeout=20)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        product_elements = soup.select('.card.is-shadowless')
-        for element in product_elements:
-            try:
-                product_type = element.select_one('.tag-title').text.strip() if element.select_one('.tag-title') else ""
-                title_div = element.select_one('.card-title')
-                product_name = title_div.text.strip().replace(product_type, '').strip() if title_div else "未知名称"
-                manufacturer = element.select_one('td.brand').text.strip() if element.select_one('td.brand') else "未知"
-                release_date = element.select_one('td.sale-time').text.strip() if element.select_one('td.sale-time') else "未知"
-                price = element.select_one('td.price\\>').text.strip() if element.select_one('td.price\\>') else "未知"
-                product_url = ""
-                link_element = element.parent
-                if link_element and link_element.name == 'a' and 'href' in link_element.attrs:
-                    product_url = link_element['href']
-                    if product_url.startswith('//'):
-                        product_url = 'https:' + product_url
-                products.append({
-                    'name': product_name, 'manufacturer': manufacturer,
-                    'release_date': release_date, 'price': price, 'product_url': product_url
-                })
-            except Exception:
-                logger.warning(f"[78dm_plugin] 解析单个产品卡片时失败。", exc_info=True)
-                continue
-    except Exception as e:
-        logger.error(f"[78dm_plugin] 抓取过程中发生错误: {e}")
-        return None
-    return products
-
+# # 注册一个临时的调试插件
 # @register(
-#     "78dm_search",
+#     "78dm_search_debugger",
 #     "critans & AI",
-#     "通过 '78dm [关键词]' 命令在 78dm.net 搜索模玩信息。",
-#     "4.0.0"  # Final Corrected Version
+#     "一个用于诊断 context 对象的调试工具。",
+#     "9.9.9-debug"
 # )
-class Dm78Plugin(Star):
+class Dm78PluginDebugger(Star):
     def __init__(self, context: Context):
         super().__init__(context)
+        logger.info("--- [78DM DEBUGGER] Plugin Initialized ---")
 
-    # --- 最终、决定性的修正 ---
     @filter.command("78dm")
-    async def dm78_handler(self, context: Context): # 1. 参数是 context，不是 event
-        """响应 '78dm' 命令，搜索78动漫网。"""
-        
-        # 2. 从 context 中获取真正的 event 对象
-        event: AstrMessageEvent = context.event
-        
-        # 3. 从 event 对象中获取完整的消息文本
-        full_text = event.message_str
+    async def dm78_debug_handler(self, context: Context):
+        """
+        这是一个特殊的调试处理函数。
+        它的唯一作用就是将接收到的 context 对象的所有信息打印到日志中。
+        """
+        logger.info("!!!!!!!!!! 78DM DEBUGGER TRIGGERED !!!!!!!!!!")
+        try:
+            # 打印接收到的对象的类型
+            logger.info(f"Handler received an object of type: {type(context)}")
+            
+            # 打印该对象的所有可用属性和方法
+            logger.info("--- Attributes of the received context object: ---")
+            attributes = dir(context)
+            for attr in attributes:
+                logger.info(f"-> {attr}")
+            logger.info("--- End of Attributes ---")
 
-        # 4. 手动解析参数
-        command_prefix = "78dm"
-        try:
-            keyword_start_index = full_text.lower().find(command_prefix.lower()) + len(command_prefix)
-            keyword = full_text[keyword_start_index:].strip()
-        except ValueError:
-            logger.error(f"[78dm_plugin] 无法在消息 '{full_text}' 中找到命令 '{command_prefix}'，这是一个逻辑错误。")
-            return
-        
-        # 5. 验证输入
-        if not keyword:
-            yield event.plain_result("请提供关键词！\n用法: 78dm [你要搜索的内容]")
-            return
-        
-        # 后续逻辑现在可以正确工作了
-        yield event.plain_result(f"收到，正在为指挥官搜索“{keyword}”...")
-        
-        loop = asyncio.get_running_loop()
-        try:
-            products = await loop.run_in_executor(None, fetch_products_from_78dm, keyword)
+            # 尝试打印一些可能存在的属性的值
+            if 'event' in attributes:
+                 logger.info(f"Value of context.event: {getattr(context, 'event')}")
+            if 'message' in attributes:
+                 logger.info(f"Value of context.message: {getattr(context, 'message')}")
+            if 'msg' in attributes:
+                 logger.info(f"Value of context.msg: {getattr(context, 'msg')}")
+
+
         except Exception as e:
-            logger.error(f"[78dm_plugin] 线程执行爬虫时发生严重错误: {e}")
-            yield event.plain_result(f"搜索“{keyword}”时发生内部错误，请联系管理员。")
-            return
-
-        if products is None:
-            yield event.plain_result(f"搜索“{keyword}”时网络似乎出了点问题，请稍后再试。")
-            return
-        if not products:
-            yield event.plain_result(f"呜... 在78动漫网没有找到关于“{keyword}”的最新资讯。")
-            return
-
-        results_to_show = products[:5]
-        response_parts = [f"为您找到关于“{keyword}”的 {len(results_to_show)} 条结果：\n--------------------"]
-        for i, prod in enumerate(results_to_show, 1):
-            part = (
-                f"{i}. {prod.get('name')}\n"
-                f"   厂商: {prod.get('manufacturer')}\n"
-                f"   价格: {prod.get('price')}\n"
-                f"   发售: {prod.get('release_date')}\n"
-                f"   链接: {prod.get('product_url')}"
-            )
-            response_parts.append(part)
-        response_parts.append("--------------------\n数据来源: 78dm.net")
+            logger.error(f"An error occurred during object inspection: {e}", exc_info=True)
         
-        final_response = "\n".join(response_parts)
-        yield event.plain_result(final_response)
+        logger.info("!!!!!!!!!! DEBUGGING COMPLETE, NO REPLY SENT !!!!!!!!!!")
+        
+        # 这是一个异步生成器，但我们不产生任何值，以便安全退出。
+        if False:
+            yield
