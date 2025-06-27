@@ -1,19 +1,21 @@
 # main.py
+
 import asyncio
-import logging
 import warnings
 import urllib.parse
 import requests
 from bs4 import BeautifulSoup
 from urllib3.exceptions import InsecureRequestWarning
 
-# --- astrbot 标准 API 导入 ---
+# --- astrbot 官方标准 API 导入 ---
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import register, Star, Context
-from astrbot.api.message_segment import MessageSegment
-from astrbot.api.logger import logger # 使用 astrbot 提供的 logger
+from astrbot.api.star import Context, Star
+from astrbot.api import logger
+# 导入官方推荐的消息组件模块，并简写为 Comp
+from astrbot.api.message_components import as Comp
 
-# --- 爬虫代码部分 (与之前相同) ---
+
+# --- 爬虫代码部分 (这部分无需改动) ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -80,29 +82,28 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
             
     return products
 
-# --- astrbot 插件主类 ---
-# @register(
-#     "78animeSearch",
-#     "critans",
-#     "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
-#     "v1.3",
-#     "https://github.com/critans/astrbot_plugin_78animesearch"
-# )
+# --- astrbot 插件主类 (遵照官方文档) ---
+
+# 注意：这里没有 @register 装饰器，符合你的开发阶段要求
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
+        self.name = "78动漫搜索插件"
+        self.version = "1.3-dev"
+        self.author = "critans"
 
-    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])  # 支持无前缀、/ 和 # 前缀
-    async def handle_78dm_search(self, event: AstrMessageEvent):
+    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
+    async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         """
         处理用户发送的 "78dm [关键词]" 命令
+        :param event: 消息事件对象
+        :param keyword: astrbot自动注入的、跟在命令后面的字符串参数
         """
-        keyword = event.command_str
         if not keyword:
             yield event.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
             return
 
-        # 发送一个等待消息，提升用户体验
+        # 使用 await event.send_message 发送一个等待消息，提升用户体验
         await event.send_message(f"正在为“{keyword}”搜索模型信息，请稍候...")
 
         try:
@@ -112,13 +113,11 @@ class MyPlugin(Star):
             )
 
             if not products:
+                # 使用 yield 发送最终的文本结果
                 yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
                 return
 
-            # 限制最多回复的结果数量，防止刷屏
             results_to_show = products[:3]
-            
-            # 发送介绍性消息
             await event.send_message(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
 
             for product in results_to_show:
@@ -131,16 +130,16 @@ class MyPlugin(Star):
                     f"链接: {product.get('product_url', 'N/A')}"
                 )
                 
-                # 构建包含图片和文本的消息段
-                msg_segments = []
+                # 使用 Comp 构建消息链（一个列表）
+                message_chain = []
                 if image_url := product.get('image_url'):
-                    msg_segments.append(MessageSegment.image(image_url))
+                    message_chain.append(Comp.Image.fromUrl(url=image_url))
                 
-                msg_segments.append(MessageSegment.plain(text_part))
+                message_chain.append(Comp.Plain(text=text_part))
 
-                # 使用 event.send_message 发送最终结果
-                await event.send_message(*msg_segments)
-                await asyncio.sleep(1) # 短暂延迟，避免发送过快或被风控
+                # 使用 await event.send_message 发送构建好的消息链
+                await event.send_message(message_chain)
+                await asyncio.sleep(1) # 短暂延迟，避免发送过快
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
