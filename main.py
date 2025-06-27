@@ -1,54 +1,147 @@
+# main.py
 import asyncio
 import logging
+import warnings
+import urllib.parse
+import requests
+from bs4 import BeautifulSoup
+from urllib3.exceptions import InsecureRequestWarning
 
-# 导入 AstrBot 核心模块
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+# --- astrbot 标准 API 导入 ---
+from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.star import register, Star, Context
+from astrbot.api.message_segment import MessageSegment
+from astrbot.api.logger import logger # 使用 astrbot 提供的 logger
 
-# # 注册一个临时的调试插件
+# --- 爬虫代码部分 (与之前相同) ---
+warnings.simplefilter('ignore', InsecureRequestWarning)
+
+def extract_product_info_from_html(product_element):
+    """从HTML产品元素中提取信息"""
+    try:
+        product_type = product_element.select_one('.tag-title').text.strip() if product_element.select_one('.tag-title') else "未知类型"
+        title_div = product_element.select_one('.card-title')
+        title_text = title_div.text.strip() if title_div else "未知名称"
+        product_name = title_text.replace(product_type, '').strip() if product_type in title_text else title_text
+        manufacturer = product_element.select_one('td.brand').text.strip() if product_element.select_one('td.brand') else "未知厂商"
+        release_date = product_element.select_one('td.sale-time').text.strip() if product_element.select_one('td.sale-time') else "未知发售"
+        price = product_element.select_one('td.price\\>').text.strip() if product_element.select_one('td.price\\>') else "未知价格"
+        image_url = product_element.select_one('img.single-cover')['src'] if product_element.select_one('img.single-cover') else ""
+        
+        product_url = ""
+        link_element = product_element.parent
+        if link_element and link_element.name == 'a' and 'href' in link_element.attrs:
+            product_url = link_element['href']
+            if product_url.startswith('//'):
+                product_url = 'https:' + product_url
+        
+        return {
+            'type': product_type, 'name': product_name, 'manufacturer': manufacturer,
+            'release_date': release_date, 'price': price, 'image_url': image_url, 'product_url': product_url
+        }
+    except Exception as e:
+        logger.error(f"[78animeSearch] 提取产品信息时出错: {e}")
+        return None
+
+def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
+    """
+    爬取78dm.net的商品信息 (同步版本，用于在异步函数中调用)
+    """
+    products = []
+    encoded_keyword = urllib.parse.quote(keyword)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    for page in range(1, max_pages + 1):
+        url = f"https://www.78dm.net/search?page={page}&type=3&keyword={encoded_keyword}"
+        logger.info(f"[78animeSearch] 正在爬取页面: {url}")
+        try:
+            response = requests.get(url, headers=headers, verify=False, timeout=20)
+            if response.status_code != 200:
+                logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
+                continue
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            product_elements = soup.select('.card.is-shadowless')
+
+            if not product_elements:
+                logger.info(f"[78animeSearch] 第{page}页没有找到产品元素，停止爬取。")
+                break
+            
+            for element in product_elements:
+                product_info = extract_product_info_from_html(element)
+                if product_info:
+                    products.append(product_info)
+            
+        except Exception as e:
+            logger.error(f"[78animeSearch] 爬取第{page}页数据时出错: {e}")
+            break
+            
+    return products
+
+# --- astrbot 插件主类 ---
 # @register(
-#     "78dm_search_debugger",
-#     "critans & AI",
-#     "一个用于诊断 context 对象的调试工具。",
-#     "9.9.9-debug"
+#     "78animeSearch",
+#     "critans",
+#     "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
+#     "v1.3",
+#     "https://github.com/critans/astrbot_plugin_78animesearch"
 # )
-class Dm78PluginDebugger(Star):
+class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        logger.info("--- [78DM DEBUGGER] Plugin Initialized ---")
 
-    @filter.command("78dm")
-    async def dm78_debug_handler(self, context: Context):
+    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])  # 支持无前缀、/ 和 # 前缀
+    async def handle_78dm_search(self, event: AstrMessageEvent):
         """
-        这是一个特殊的调试处理函数。
-        它的唯一作用就是将接收到的 context 对象的所有信息打印到日志中。
+        处理用户发送的 "78dm [关键词]" 命令
         """
-        logger.info("!!!!!!!!!! 78DM DEBUGGER TRIGGERED !!!!!!!!!!")
+        keyword = event.command_str
+        if not keyword:
+            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
+            return
+
+        # 发送一个等待消息，提升用户体验
+        await event.send_message(f"正在为“{keyword}”搜索模型信息，请稍候...")
+
         try:
-            # 打印接收到的对象的类型
-            logger.info(f"Handler received an object of type: {type(context)}")
+            # 使用 run_in_executor 在独立线程中运行同步的爬虫代码，避免阻塞
+            products = await self.context.loop.run_in_executor(
+                None, fetch_products_from_78dm, keyword, 1
+            )
+
+            if not products:
+                yield event.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
+                return
+
+            # 限制最多回复的结果数量，防止刷屏
+            results_to_show = products[:3]
             
-            # 打印该对象的所有可用属性和方法
-            logger.info("--- Attributes of the received context object: ---")
-            attributes = dir(context)
-            for attr in attributes:
-                logger.info(f"-> {attr}")
-            logger.info("--- End of Attributes ---")
+            # 发送介绍性消息
+            await event.send_message(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
 
-            # 尝试打印一些可能存在的属性的值
-            if 'event' in attributes:
-                 logger.info(f"Value of context.event: {getattr(context, 'event')}")
-            if 'message' in attributes:
-                 logger.info(f"Value of context.message: {getattr(context, 'message')}")
-            if 'msg' in attributes:
-                 logger.info(f"Value of context.msg: {getattr(context, 'msg')}")
+            for product in results_to_show:
+                text_part = (
+                    f"名称: {product.get('name', 'N/A')}\n"
+                    f"类型: {product.get('type', 'N/A')}\n"
+                    f"厂商: {product.get('manufacturer', 'N/A')}\n"
+                    f"发售: {product.get('release_date', 'N/A')}\n"
+                    f"价格: {product.get('price', 'N/A')}\n"
+                    f"链接: {product.get('product_url', 'N/A')}"
+                )
+                
+                # 构建包含图片和文本的消息段
+                msg_segments = []
+                if image_url := product.get('image_url'):
+                    msg_segments.append(MessageSegment.image(image_url))
+                
+                msg_segments.append(MessageSegment.plain(text_part))
 
+                # 使用 event.send_message 发送最终结果
+                await event.send_message(*msg_segments)
+                await asyncio.sleep(1) # 短暂延迟，避免发送过快或被风控
 
         except Exception as e:
-            logger.error(f"An error occurred during object inspection: {e}", exc_info=True)
-        
-        logger.info("!!!!!!!!!! DEBUGGING COMPLETE, NO REPLY SENT !!!!!!!!!!")
-        
-        # 这是一个异步生成器，但我们不产生任何值，以便安全退出。
-        if False:
-            yield
+            logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
+            yield event.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
