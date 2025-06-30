@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 (无变化) ---
+# --- 爬虫代码部分 ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -64,30 +64,25 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    for page in range(1, max_pages + 1):
-        url = f"https://www.78dm.net/search?page={page}&type=3&keyword={encoded_keyword}"
-        logger.info(f"[78animeSearch] 正在爬取页面: {url}")
-        try:
-            response = requests.get(url, headers=headers, verify=False, timeout=20)
-            if response.status_code != 200:
-                logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
-                continue
+    # 只爬取第1页
+    url = f"https://www.78dm.net/search?page=1&type=3&keyword={encoded_keyword}"
+    logger.info(f"[78animeSearch] 正在爬取页面: {url}")
+    try:
+        response = requests.get(url, headers=headers, verify=False, timeout=20)
+        if response.status_code != 200:
+            logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
+            return []
 
-            soup = BeautifulSoup(response.text, 'html.parser')
-            product_elements = soup.select('.card.is-shadowless')
+        soup = BeautifulSoup(response.text, 'html.parser')
+        product_elements = soup.select('.card.is-shadowless')
 
-            if not product_elements:
-                logger.info(f"[78animeSearch] 第{page}页没有找到产品元素，停止爬取。")
-                break
-            
-            for element in product_elements:
-                product_info = extract_product_info_from_html(element)
-                if product_info:
-                    products.append(product_info)
-            
-        except Exception as e:
-            logger.error(f"[78animeSearch] 爬取第{page}页数据时出错: {e}")
-            break
+        for element in product_elements:
+            product_info = extract_product_info_from_html(element)
+            if product_info:
+                products.append(product_info)
+        
+    except Exception as e:
+        logger.error(f"[78animeSearch] 爬取第1页数据时出错: {e}")
             
     return products
 
@@ -97,66 +92,42 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "5.0-final" 
-        self.author = "critans & AI"
+        self.version = "1.0-stable" 
+        self.author = "critans"
 
-    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
+    @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent):
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # !!                       这 就 是 最 终 的 答 案                    !!
-        # !! 1. 使用最稳定的函数签名 (self, event)
-        # !! 2. 调用 event.get_message_str() 获取完整原始消息
-        # !! 3. 手动解析出命令和参数
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        
-        # 从事件对象获取完整的原始消息文本
+        # 使用最稳定的方式获取参数
         raw_text = event.get_message_str().strip()
-        
-        # 定义所有可能的命令头
         commands = ["/78dm", "#78dm", "78dm", "/78动漫", "#78动漫", "78动漫", "/模型搜索", "#模型搜索", "模型搜索"]
         
-        # 找到被触发的命令头
         triggered_command = None
         for cmd in commands:
             if raw_text.startswith(cmd):
                 triggered_command = cmd
                 break
         
-        # 如果没有找到命令头（理论上不可能，因为有filter），或者命令后没有参数，则提示用法
         if triggered_command is None or len(raw_text) == len(triggered_command):
-            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
+            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词>")
             return
 
-        # 移除命令头，获取纯粹的参数部分
-        full_command_args = raw_text[len(triggered_command):].strip()
-
-        parts = full_command_args.split()
-        search_keyword = ""
-        max_pages = 1
-        MAX_PAGE_LIMIT = 5 
-
-        if len(parts) > 1 and parts[-1].isdigit():
-            search_keyword = " ".join(parts[:-1])
-            max_pages = max(1, min(int(parts[-1]), MAX_PAGE_LIMIT))
-        else:
-            search_keyword = full_command_args
+        search_keyword = raw_text[len(triggered_command):].strip()
         
         if not search_keyword:
-            yield event.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
+            yield event.plain_result("关键词不能为空！\n用法：78dm <关键词>")
             return
 
-        yield event.plain_result(f"正在为“{search_keyword}”搜索模型信息 (最多搜索 {max_pages} 页)，请稍候...")
+        yield event.plain_result(f"正在为“{search_keyword}”搜索模型信息，请稍候...")
 
         try:
             loop = asyncio.get_running_loop()
             products = await loop.run_in_executor(
-                None, fetch_products_from_78dm, search_keyword, max_pages
+                None, fetch_products_from_78dm, search_keyword, 1
             )
 
             if not products:
                 yield event.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
-            
             aggregated_content = []
             
             intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
