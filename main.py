@@ -93,13 +93,13 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 
 # --- astrbot 插件主类 ---
 
-# @register(
-#     "78animeSearch",
-#     "critans",
-#     "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
-#     "v2.0",
-#     "https://github.com/critans/astrbot_plugin_78animesearch"
-# )
+@register(
+    "78animeSearch",
+    "critans",
+    "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
+    "v2.0",
+    "https://github.com/critans/astrbot_plugin_78animesearch"
+)
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
@@ -111,7 +111,7 @@ class MyPlugin(Star):
     @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
-        the_real_event_obj = self
+        the_real_event_obj = event
 
         if not keyword:
             yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词>")
@@ -132,7 +132,7 @@ class MyPlugin(Star):
             yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词>")
             return
 
-        yield the_real_event_obj.plain_result(f"正在为“{search_keyword}”搜索模型信息，请稍候...")
+        yield the_real_event_obj.plain_result(f"正在为'{search_keyword}'搜索模型信息，请稍候...")
 
         try:
             loop = asyncio.get_running_loop()
@@ -141,18 +141,19 @@ class MyPlugin(Star):
             )
 
             if not products:
-                yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
+                yield the_real_event_obj.plain_result(f'未能找到与"{search_keyword}"相关的模型信息，请更换关键词再试。')
                 return
             
-            # 1. 创建一个聚合的内容列表
-            aggregated_content = []
-            
-            # 2. 加入介绍性文本
-            intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
-            aggregated_content.append(Comp.Plain(text=intro_text))
+            # 发送一条介绍性文本
+            intro_text = f'为你找到关于"{search_keyword}"的 {len(products)} 条结果：'
+            yield the_real_event_obj.plain_result(intro_text)
 
-            # 3. 遍历所有产品，将它们的图文组件全部加入到聚合列表中
+            # 为每个产品创建一个 Node，作为合并转发的一条消息
+            nodes = []
             for product in products:
+                # 每个产品的消息内容
+                content = []
+                
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
                     f"类型: {product.get('type', 'N/A')}\n"
@@ -163,23 +164,23 @@ class MyPlugin(Star):
                 )
                 
                 if image_url := product.get('image_url'):
-                    aggregated_content.append(Comp.Image.fromURL(url=image_url))
+                    content.append(Comp.Image.fromURL(url=image_url))
                 
-                aggregated_content.append(Comp.Plain(text=text_part))
-                
-                # 在每个条目后加入分割线，除了最后一个
-                if product != products[-1]:
-                    aggregated_content.append(Comp.Plain(text="\n" + "—"*15 + "\n"))
+                content.append(Comp.Plain(text=text_part))
 
-            # 4. 用这个聚合列表创建唯一的一个 Node
-            final_node = Comp.Node(
-                uin=the_real_event_obj.get_self_id(),
-                name="78动漫搜索结果",
-                content=aggregated_content
-            )
+                # 创建 Node
+                node = Comp.Node(
+                    uin=the_real_event_obj.get_self_id(),
+                    name=product.get('name', '搜索结果'), # 使用产品名作为气泡昵称
+                    content=content
+                )
+                nodes.append(node)
             
-            # 5. 将这个包含了单个 Node 的列表，通过 chain_result 发送出去
-            yield the_real_event_obj.chain_result([final_node])
+            # 将所有独立的 Node 打包成一个 Comp.Nodes 组件，它代表一条完整的合并转发消息
+            forward_message = Comp.Nodes(nodes=nodes)
+
+            # 将这个合并转发组件作为链中的唯一元素，通过 chain_result 发送
+            yield the_real_event_obj.chain_result([forward_message])
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
