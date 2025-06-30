@@ -96,11 +96,11 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.name = "78动漫"
-        self.version = "3.0-final" 
-        self.author = "critans"
+        self.name = "78动漫搜索插件"
+        self.version = "4.0" # 基于最终洞察力的全新版本
+        self.author = "critans & AI"
 
-    @filter.command("78dm", prefixes=["", "/", "#"])
+    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
         the_real_event_obj = self
@@ -136,18 +136,19 @@ class MyPlugin(Star):
                 yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
             
-            forward_nodes = []
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # !!                       这 就 是 最 终 的 答 案                    !!
+            # !!           将所有内容塞进一个 Node 的 content 列表里            !!
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             
-            bot_uin = the_real_event_obj.get_self_id()
-            bot_name = "搜索小助手"
+            # 1. 创建一个大的、聚合的内容列表
+            aggregated_content = []
             
-            intro_node = Comp.Node(
-                uin=bot_uin,
-                name=bot_name,
-                content=[Comp.Plain(text=f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：")]
-            )
-            forward_nodes.append(intro_node)
+            # 2. 加入介绍性文本
+            intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
+            aggregated_content.append(Comp.Plain(text=intro_text))
 
+            # 3. 遍历所有产品，将它们的图文组件全部加入到聚合列表中
             for product in products:
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
@@ -158,21 +159,24 @@ class MyPlugin(Star):
                     f"链接: {product.get('product_url', 'N/A')}"
                 )
                 
-                node_content = []
                 if image_url := product.get('image_url'):
-                    node_content.append(Comp.Image.fromURL(url=image_url))
+                    aggregated_content.append(Comp.Image.fromURL(url=image_url))
                 
-                node_content.append(Comp.Plain(text=text_part))
+                aggregated_content.append(Comp.Plain(text=text_part))
                 
-                product_node = Comp.Node(
-                    uin=bot_uin,
-                    name="78动漫",
-                    content=node_content
-                )
-                forward_nodes.append(product_node)
-                
-            if forward_nodes:
-                yield the_real_event_obj.chain_result(forward_nodes)
+                # 在每个条目后加入分割线，除了最后一个
+                if product != products[-1]:
+                    aggregated_content.append(Comp.Plain(text="\n" + "—"*15 + "\n"))
+
+            # 4. 用这个聚合列表创建唯一的一个 Node
+            final_node = Comp.Node(
+                uin=the_real_event_obj.get_self_id(),
+                name="78动漫搜索结果",
+                content=aggregated_content
+            )
+            
+            # 5. 将这个包含了单个 Node 的列表，通过 chain_result 发送出去
+            yield the_real_event_obj.chain_result([final_node])
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
