@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 ---
+# --- 爬虫代码部分 (无变化) ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -100,7 +100,7 @@ class MyPlugin(Star):
         self.version = "1.5-final"
         self.author = "critans"
 
-    @filter.command("78dm", prefixes=["", "/", "#"])
+    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
         the_real_event_obj = self
@@ -139,8 +139,15 @@ class MyPlugin(Star):
             
             forward_nodes = []
 
-            # !!           通过 context 获取平台，再获取 self_id              !!
-            bot_uin = the_real_context_obj.get_platform().self_id
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # !!                        最 终 的 正 确 写 法                     !!
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # 1. 从 event 对象（现在是 self）获取 platform_type
+            platform_type = the_real_event_obj.platform_adapter_type
+            # 2. 从 context 对象（现在是 event）获取指定平台的适配器
+            adapter = the_real_context_obj.get_platform(platform_type)
+            # 3. 从适配器获取机器人自己的 ID
+            bot_uin = adapter.self_id
             
             intro_node = Comp.Node(
                 uin=bot_uin,
@@ -167,7 +174,7 @@ class MyPlugin(Star):
                 
                 product_node = Comp.Node(
                     uin=bot_uin,
-                    name="菲比",
+                    name="78动漫搜搜",
                     content=node_content
                 )
                 forward_nodes.append(product_node)
