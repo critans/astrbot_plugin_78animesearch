@@ -97,25 +97,39 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "4.0-final" 
+        self.version = "5.0-final" 
         self.author = "critans & AI"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent):
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # !!                       这 就 是 最 终 的 答 案                    !!
-        # !! 1. 放弃自动注入的 keyword 参数
-        # !! 2. 从 event 对象（现在是 self）的 command_str 属性获取完整参数   !!
+        # !! 1. 使用最稳定的函数签名 (self, event)
+        # !! 2. 调用 event.get_message_str() 获取完整原始消息
+        # !! 3. 手动解析出命令和参数
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        the_real_event_obj = self
         
-        # 从事件对象获取完整的参数字符串
-        full_command_args = the_real_event_obj.command_str
-
-        if not full_command_args:
-            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
+        # 从事件对象获取完整的原始消息文本
+        raw_text = event.get_message_str().strip()
+        
+        # 定义所有可能的命令头
+        commands = ["/78dm", "#78dm", "78dm", "/78动漫", "#78动漫", "78动漫", "/模型搜索", "#模型搜索", "模型搜索"]
+        
+        # 找到被触发的命令头
+        triggered_command = None
+        for cmd in commands:
+            if raw_text.startswith(cmd):
+                triggered_command = cmd
+                break
+        
+        # 如果没有找到命令头（理论上不可能，因为有filter），或者命令后没有参数，则提示用法
+        if triggered_command is None or len(raw_text) == len(triggered_command):
+            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
             return
-        
+
+        # 移除命令头，获取纯粹的参数部分
+        full_command_args = raw_text[len(triggered_command):].strip()
+
         parts = full_command_args.split()
         search_keyword = ""
         max_pages = 1
@@ -128,10 +142,10 @@ class MyPlugin(Star):
             search_keyword = full_command_args
         
         if not search_keyword:
-            yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
+            yield event.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
             return
 
-        yield the_real_event_obj.plain_result(f"正在为“{search_keyword}”搜索模型信息 (最多搜索 {max_pages} 页)，请稍候...")
+        yield event.plain_result(f"正在为“{search_keyword}”搜索模型信息 (最多搜索 {max_pages} 页)，请稍候...")
 
         try:
             loop = asyncio.get_running_loop()
@@ -140,10 +154,9 @@ class MyPlugin(Star):
             )
 
             if not products:
-                yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
+                yield event.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
             
-            # 将所有结果聚合到一个 Node 的 content 中，实现真正的合并转发
             aggregated_content = []
             
             intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
@@ -168,13 +181,13 @@ class MyPlugin(Star):
                     aggregated_content.append(Comp.Plain(text="\n" + "—"*15 + "\n"))
 
             final_node = Comp.Node(
-                uin=the_real_event_obj.get_self_id(),
+                uin=event.get_self_id(),
                 name="78动漫搜索结果",
                 content=aggregated_content
             )
             
-            yield the_real_event_obj.chain_result([final_node])
+            yield event.chain_result([final_node])
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
-            yield the_real_event_obj.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
+            yield event.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
