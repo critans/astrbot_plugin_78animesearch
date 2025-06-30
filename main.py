@@ -97,7 +97,7 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "2.0-final" 
+        self.version = "3.0" # 拨乱反正，涅槃重生
         self.author = "critans & AI"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
@@ -172,11 +172,11 @@ class MyPlugin(Star):
                 forward_nodes.append(product_node)
             
             # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # !!                        最 终 的 正 确 写 法                      !!
-            # !!           使用事件对象的辅助方法 event.forward_result()          !!
+            # !!                   这 就 是 最 终 的、正 确 的 写 法                !!
+            # !!      将一个包含了多个 Node 的列表，直接传给 chain_result()       !!
             # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             if forward_nodes:
-                yield the_real_event_obj.forward_result(nodes=forward_nodes)
+                yield the_real_event_obj.chain_result(forward_nodes)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
