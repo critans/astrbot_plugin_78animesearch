@@ -9,7 +9,7 @@ from urllib3.exceptions import InsecureRequestWarning
 
 # --- astrbot 官方标准 API 导入 ---
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star
+from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
