@@ -93,13 +93,13 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 
 # --- astrbot 插件主类 ---
 
-@register(
-    "78animeSearch",
-    "critans",
-    "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
-    "v2.0",
-    "https://github.com/critans/astrbot_plugin_78animesearch"
-)
+# @register(
+#     "78animeSearch",
+#     "critans",
+#     "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
+#     "v2.0",
+#     "https://github.com/critans/astrbot_plugin_78animesearch"
+# )
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
