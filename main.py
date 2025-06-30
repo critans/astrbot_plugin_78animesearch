@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 (无变化) ---
+# --- 爬虫代码部分 ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -96,15 +96,14 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.name = "78动漫搜索插件"
-        self.version = "1.5-final"
+        self.name = "78动漫"
+        self.version = "2.0"
         self.author = "critans"
 
-    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
+    @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
         the_real_event_obj = self
-        the_real_context_obj = event
 
         if not keyword:
             yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
@@ -139,19 +138,13 @@ class MyPlugin(Star):
             
             forward_nodes = []
 
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # !!                        最 终 的 正 确 写 法                     !!
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # 1. 从 event 对象（现在是 self）获取 platform_type
-            platform_type = the_real_event_obj.platform_adapter_type
-            # 2. 从 context 对象（现在是 event）获取指定平台的适配器
-            adapter = the_real_context_obj.get_platform(platform_type)
-            # 3. 从适配器获取机器人自己的 ID
-            bot_uin = adapter.self_id
+            # !!           直接从 event 对象（现在是 self）获取发送者信息        !!
+            sender_id = the_real_event_obj.sender.id
+            sender_name = the_real_event_obj.sender.name if the_real_event_obj.sender.name else "搜索结果"
             
             intro_node = Comp.Node(
-                uin=bot_uin,
-                name="搜索小助手",
+                uin=sender_id,
+                name=sender_name,
                 content=[Comp.Plain(text=f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：")]
             )
             forward_nodes.append(intro_node)
@@ -173,8 +166,8 @@ class MyPlugin(Star):
                 node_content.append(Comp.Plain(text=text_part))
                 
                 product_node = Comp.Node(
-                    uin=bot_uin,
-                    name="78动漫搜搜",
+                    uin=sender_id,
+                    name=sender_name,
                     content=node_content
                 )
                 forward_nodes.append(product_node)
