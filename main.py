@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 (修正图片URL处理) ---
+# --- 爬虫代码部分 ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -28,10 +28,6 @@ def extract_product_info_from_html(product_element):
         release_date = product_element.select_one('td.sale-time').text.strip() if product_element.select_one('td.sale-time') else "未知发售"
         price = product_element.select_one('td.price\\>').text.strip() if product_element.select_one('td.price\\>') else "未知价格"
         
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # !!                       这 里 是 最 终 修 正                     !!
-        # !!           确保 image_url 始终是完整的绝对路径                  !!
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         image_url = ""
         img_element = product_element.select_one('img.single-cover')
         if img_element and 'src' in img_element.attrs:
@@ -101,33 +97,59 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "1.3-final"
+        self.version = "1.5"
         self.author = "critans"
 
-    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
+    @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         the_real_event_obj = self
 
         if not keyword:
-            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm [关键词]")
+            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
             return
         
-        yield the_real_event_obj.plain_result(f"正在为“{keyword}”搜索模型信息，请稍候...")
+        parts = keyword.split()
+        search_keyword = ""
+        max_pages = 1
+        MAX_PAGE_LIMIT = 5 
+
+        if len(parts) > 1 and parts[-1].isdigit():
+            search_keyword = " ".join(parts[:-1])
+            max_pages = max(1, min(int(parts[-1]), MAX_PAGE_LIMIT))
+        else:
+            search_keyword = keyword
+        
+        if not search_keyword:
+            yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
+            return
+
+        yield the_real_event_obj.plain_result(f"正在为“{search_keyword}”搜索模型信息 (最多搜索 {max_pages} 页)，请稍候...")
 
         try:
             loop = asyncio.get_running_loop()
             products = await loop.run_in_executor(
-                None, fetch_products_from_78dm, keyword, 1
+                None, fetch_products_from_78dm, search_keyword, max_pages
             )
 
             if not products:
-                yield the_real_event_obj.plain_result(f"未能找到与“{keyword}”相关的模型信息，请更换关键词再试。")
+                yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
 
-            yield the_real_event_obj.plain_result(f"为你找到以下关于“{keyword}”的结果：\n" + "-"*20)
+            # !!                将所有结果构建为合并转发节点                    !!
+            
+            forward_nodes = []
+            
+            # 1. 创建一个介绍性的节点
+            intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果："
+            intro_node = Comp.Node(
+                uin=the_real_event_obj.self_id,  # 使用机器人自己的ID
+                name="菲比",               # 自定义发送者昵称
+                content=[Comp.Plain(text=intro_text)] # 节点内容
+            )
+            forward_nodes.append(intro_node)
 
-            results_to_show = products[:3]
-            for product in results_to_show:
+            # 2. 遍历所有产品，为每个产品创建一个节点
+            for product in products: # 解除只发送3条的限制
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
                     f"类型: {product.get('type', 'N/A')}\n"
@@ -137,15 +159,23 @@ class MyPlugin(Star):
                     f"链接: {product.get('product_url', 'N/A')}"
                 )
                 
-                message_chain = []
-                # 使用 if...else... 来确保 image_url 存在且不为空
+                node_content = []
                 if image_url := product.get('image_url'):
-                    message_chain.append(Comp.Image.fromURL(url=image_url))
+                    node_content.append(Comp.Image.fromURL(url=image_url))
                 
-                message_chain.append(Comp.Plain(text=text_part))
+                node_content.append(Comp.Plain(text=text_part))
                 
-                yield the_real_event_obj.chain_result(message_chain)
-                await asyncio.sleep(1)
+                # 创建一个包含图文的消息节点
+                product_node = Comp.Node(
+                    uin=the_real_event_obj.self_id,
+                    name="78动漫搜搜",
+                    content=node_content
+                )
+                forward_nodes.append(product_node)
+            
+            # 3. 使用 Comp.Forward 包装所有节点，并 yield
+            if forward_nodes:
+                yield Comp.Forward(nodes=forward_nodes)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
