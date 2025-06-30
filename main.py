@@ -97,12 +97,14 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "1.5"
+        self.version = "1.5-final"
         self.author = "critans"
 
     @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
+        # 参数错位修正
         the_real_event_obj = self
+        the_real_context_obj = event
 
         if not keyword:
             yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
@@ -134,22 +136,20 @@ class MyPlugin(Star):
             if not products:
                 yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
-
-            # !!                将所有结果构建为合并转发节点                    !!
             
             forward_nodes = []
+
+            # !!           通过 context 获取平台，再获取 self_id              !!
+            bot_uin = the_real_context_obj.get_platform().self_id
             
-            # 1. 创建一个介绍性的节点
-            intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果："
             intro_node = Comp.Node(
-                uin=the_real_event_obj.self_id,  # 使用机器人自己的ID
-                name="菲比",               # 自定义发送者昵称
-                content=[Comp.Plain(text=intro_text)] # 节点内容
+                uin=bot_uin,
+                name="搜索小助手",
+                content=[Comp.Plain(text=f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：")]
             )
             forward_nodes.append(intro_node)
 
-            # 2. 遍历所有产品，为每个产品创建一个节点
-            for product in products: # 解除只发送3条的限制
+            for product in products:
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
                     f"类型: {product.get('type', 'N/A')}\n"
@@ -165,15 +165,13 @@ class MyPlugin(Star):
                 
                 node_content.append(Comp.Plain(text=text_part))
                 
-                # 创建一个包含图文的消息节点
                 product_node = Comp.Node(
-                    uin=the_real_event_obj.self_id,
-                    name="78动漫搜搜",
+                    uin=bot_uin,
+                    name="菲比",
                     content=node_content
                 )
                 forward_nodes.append(product_node)
             
-            # 3. 使用 Comp.Forward 包装所有节点，并 yield
             if forward_nodes:
                 yield Comp.Forward(nodes=forward_nodes)
 
