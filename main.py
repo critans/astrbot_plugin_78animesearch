@@ -64,75 +64,94 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    # 只爬取第1页
-    url = f"https://www.78dm.net/search?page=1&type=3&keyword={encoded_keyword}"
-    logger.info(f"[78animeSearch] 正在爬取页面: {url}")
-    try:
-        response = requests.get(url, headers=headers, verify=False, timeout=20)
-        if response.status_code != 200:
-            logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
-            return []
+    for page in range(1, max_pages + 1):
+        url = f"https://www.78dm.net/search?page={page}&type=3&keyword={encoded_keyword}"
+        logger.info(f"[78animeSearch] 正在爬取页面: {url}")
+        try:
+            response = requests.get(url, headers=headers, verify=False, timeout=20)
+            if response.status_code != 200:
+                logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
+                continue
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        product_elements = soup.select('.card.is-shadowless')
+            soup = BeautifulSoup(response.text, 'html.parser')
+            product_elements = soup.select('.card.is-shadowless')
 
-        for element in product_elements:
-            product_info = extract_product_info_from_html(element)
-            if product_info:
-                products.append(product_info)
-        
-    except Exception as e:
-        logger.error(f"[78animeSearch] 爬取第1页数据时出错: {e}")
+            if not product_elements:
+                logger.info(f"[78animeSearch] 第{page}页没有找到产品元素，停止爬取。")
+                break
+            
+            for element in product_elements:
+                product_info = extract_product_info_from_html(element)
+                if product_info:
+                    products.append(product_info)
+            
+        except Exception as e:
+            logger.error(f"[78animeSearch] 爬取第{page}页数据时出错: {e}")
+            break
             
     return products
 
 # --- astrbot 插件主类 ---
 
+@register(
+    "78animeSearch",
+    "critans",
+    "通过 '78dm [关键词]' 命令在78动漫模型网搜索信息。",
+    "v2.0",
+    "https://github.com/critans/astrbot_plugin_78animesearch"
+)
+
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "1.0-stable" 
+        self.version = "2.0"
         self.author = "critans"
 
     @filter.command("78dm", prefixes=["", "/", "#"])
-    async def handle_78dm_search(self, event: AstrMessageEvent):
-        # 使用最稳定的方式获取参数
-        raw_text = event.get_message_str().strip()
-        commands = ["/78dm", "#78dm", "78dm", "/78动漫", "#78动漫", "78动漫", "/模型搜索", "#模型搜索", "模型搜索"]
-        
-        triggered_command = None
-        for cmd in commands:
-            if raw_text.startswith(cmd):
-                triggered_command = cmd
-                break
-        
-        if triggered_command is None or len(raw_text) == len(triggered_command):
-            yield event.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词>")
-            return
+    async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
+        # 参数错位修正
+        the_real_event_obj = self
 
-        search_keyword = raw_text[len(triggered_command):].strip()
+        if not keyword:
+            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词>")
+            return
+        
+        parts = keyword.split()
+        search_keyword = ""
+        max_pages = 1
+        MAX_PAGE_LIMIT = 5 
+
+        if len(parts) > 1 and parts[-1].isdigit():
+            search_keyword = " ".join(parts[:-1])
+            max_pages = max(1, min(int(parts[-1]), MAX_PAGE_LIMIT))
+        else:
+            search_keyword = keyword
         
         if not search_keyword:
-            yield event.plain_result("关键词不能为空！\n用法：78dm <关键词>")
+            yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词>")
             return
 
-        yield event.plain_result(f"正在为“{search_keyword}”搜索模型信息，请稍候...")
+        yield the_real_event_obj.plain_result(f"正在为“{search_keyword}”搜索模型信息，请稍候...")
 
         try:
             loop = asyncio.get_running_loop()
             products = await loop.run_in_executor(
-                None, fetch_products_from_78dm, search_keyword, 1
+                None, fetch_products_from_78dm, search_keyword, max_pages
             )
 
             if not products:
-                yield event.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
+                yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
+            
+            # 1. 创建一个聚合的内容列表
             aggregated_content = []
             
+            # 2. 加入介绍性文本
             intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
             aggregated_content.append(Comp.Plain(text=intro_text))
 
+            # 3. 遍历所有产品，将它们的图文组件全部加入到聚合列表中
             for product in products:
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
@@ -148,17 +167,20 @@ class MyPlugin(Star):
                 
                 aggregated_content.append(Comp.Plain(text=text_part))
                 
+                # 在每个条目后加入分割线，除了最后一个
                 if product != products[-1]:
                     aggregated_content.append(Comp.Plain(text="\n" + "—"*15 + "\n"))
 
+            # 4. 用这个聚合列表创建唯一的一个 Node
             final_node = Comp.Node(
-                uin=event.get_self_id(),
+                uin=the_real_event_obj.get_self_id(),
                 name="78动漫搜索结果",
                 content=aggregated_content
             )
             
-            yield event.chain_result([final_node])
+            # 5. 将这个包含了单个 Node 的列表，通过 chain_result 发送出去
+            yield the_real_event_obj.chain_result([final_node])
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
-            yield event.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
+            yield the_real_event_obj.plain_result("查询过程中出现了一些问题，请稍后再试或联系管理员查看后台日志。")
