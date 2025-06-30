@@ -14,7 +14,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 
 
-# --- 爬虫代码部分 ---
+# --- 爬虫代码部分 (无变化) ---
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
 def extract_product_info_from_html(product_element):
@@ -96,11 +96,11 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.name = "78动漫搜索"
+        self.name = "78动漫搜索插件"
         self.version = "2.0-final" 
-        self.author = "critans"
+        self.author = "critans & AI"
 
-    @filter.command("78dm", prefixes=["", "/", "#"])
+    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
         the_real_event_obj = self
@@ -137,13 +137,13 @@ class MyPlugin(Star):
                 return
             
             forward_nodes = []
-
-            # !!           调用事件对象的 get_self_id() 方法                  !!
+            
             bot_uin = the_real_event_obj.get_self_id()
+            bot_name = "搜索小助手"
             
             intro_node = Comp.Node(
                 uin=bot_uin,
-                name="78动漫",
+                name=bot_name,
                 content=[Comp.Plain(text=f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：")]
             )
             forward_nodes.append(intro_node)
@@ -166,13 +166,17 @@ class MyPlugin(Star):
                 
                 product_node = Comp.Node(
                     uin=bot_uin,
-                    name="78动漫",
+                    name="78动漫搜搜",
                     content=node_content
                 )
                 forward_nodes.append(product_node)
             
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # !!                        最 终 的 正 确 写 法                      !!
+            # !!           使用事件对象的辅助方法 event.forward_result()          !!
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             if forward_nodes:
-                yield Comp.Forward(nodes=forward_nodes)
+                yield the_real_event_obj.forward_result(nodes=forward_nodes)
 
         except Exception as e:
             logger.error(f"[78animeSearch] 处理搜索命令时发生严重错误: {e}", exc_info=True)
