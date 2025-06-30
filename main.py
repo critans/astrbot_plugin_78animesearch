@@ -97,19 +97,26 @@ class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.name = "78动漫搜索插件"
-        self.version = "4.0" # 基于最终洞察力的全新版本
+        self.version = "4.0-final" 
         self.author = "critans & AI"
 
     @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
-    async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
-        # 参数错位修正
+    async def handle_78dm_search(self, event: AstrMessageEvent):
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # !!                       这 就 是 最 终 的 答 案                    !!
+        # !! 1. 放弃自动注入的 keyword 参数
+        # !! 2. 从 event 对象（现在是 self）的 command_str 属性获取完整参数   !!
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         the_real_event_obj = self
+        
+        # 从事件对象获取完整的参数字符串
+        full_command_args = the_real_event_obj.command_str
 
-        if not keyword:
+        if not full_command_args:
             yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
             return
         
-        parts = keyword.split()
+        parts = full_command_args.split()
         search_keyword = ""
         max_pages = 1
         MAX_PAGE_LIMIT = 5 
@@ -118,7 +125,7 @@ class MyPlugin(Star):
             search_keyword = " ".join(parts[:-1])
             max_pages = max(1, min(int(parts[-1]), MAX_PAGE_LIMIT))
         else:
-            search_keyword = keyword
+            search_keyword = full_command_args
         
         if not search_keyword:
             yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
@@ -136,19 +143,12 @@ class MyPlugin(Star):
                 yield the_real_event_obj.plain_result(f"未能找到与“{search_keyword}”相关的模型信息，请更换关键词再试。")
                 return
             
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # !!                       这 就 是 最 终 的 答 案                    !!
-            # !!           将所有内容塞进一个 Node 的 content 列表里            !!
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            
-            # 1. 创建一个大的、聚合的内容列表
+            # 将所有结果聚合到一个 Node 的 content 中，实现真正的合并转发
             aggregated_content = []
             
-            # 2. 加入介绍性文本
             intro_text = f"为你找到关于“{search_keyword}”的 {len(products)} 条结果：\n" + "—"*15
             aggregated_content.append(Comp.Plain(text=intro_text))
 
-            # 3. 遍历所有产品，将它们的图文组件全部加入到聚合列表中
             for product in products:
                 text_part = (
                     f"名称: {product.get('name', 'N/A')}\n"
@@ -164,18 +164,15 @@ class MyPlugin(Star):
                 
                 aggregated_content.append(Comp.Plain(text=text_part))
                 
-                # 在每个条目后加入分割线，除了最后一个
                 if product != products[-1]:
                     aggregated_content.append(Comp.Plain(text="\n" + "—"*15 + "\n"))
 
-            # 4. 用这个聚合列表创建唯一的一个 Node
             final_node = Comp.Node(
                 uin=the_real_event_obj.get_self_id(),
                 name="78动漫搜索结果",
                 content=aggregated_content
             )
             
-            # 5. 将这个包含了单个 Node 的列表，通过 chain_result 发送出去
             yield the_real_event_obj.chain_result([final_node])
 
         except Exception as e:
