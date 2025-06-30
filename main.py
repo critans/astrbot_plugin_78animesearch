@@ -96,11 +96,11 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
 class MyPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.name = "78动漫搜索插件"
-        self.version = "3.0" # 拨乱反正，涅槃重生
-        self.author = "critans & AI"
+        self.name = "78动漫"
+        self.version = "3.0-final" 
+        self.author = "critans"
 
-    @filter.command("78dm", "78动漫", "模型搜索", prefixes=["", "/", "#"])
+    @filter.command("78dm", prefixes=["", "/", "#"])
     async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
         # 参数错位修正
         the_real_event_obj = self
@@ -166,15 +166,11 @@ class MyPlugin(Star):
                 
                 product_node = Comp.Node(
                     uin=bot_uin,
-                    name="78动漫搜搜",
+                    name="78动漫",
                     content=node_content
                 )
                 forward_nodes.append(product_node)
-            
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            # !!                   这 就 是 最 终 的、正 确 的 写 法                !!
-            # !!      将一个包含了多个 Node 的列表，直接传给 chain_result()       !!
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                
             if forward_nodes:
                 yield the_real_event_obj.chain_result(forward_nodes)
 
