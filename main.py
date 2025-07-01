@@ -109,30 +109,38 @@ class MyPlugin(Star):
         self.author = "critans"
 
     @filter.command("78dm", prefixes=["", "/", "#"])
-    async def handle_78dm_search(self, event: AstrMessageEvent, keyword: str):
+    async def handle_78dm_search(self, event: AstrMessageEvent):
         # 参数错位修正
         the_real_event_obj = event
 
-        if not keyword:
-            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词>")
+        # 从 event 中获取完整的消息字符串，例如 "78dm 能天使 2"
+        raw_message = event.get_message_str().strip()
+        parts = raw_message.split()
+        
+        # 移除命令本身（例如 "78dm"），只保留参数部分
+        args = parts[1:]
+
+        if not args:
+            yield the_real_event_obj.plain_result("请提供要搜索的关键词！\n用法：78dm <关键词> [页数]")
             return
         
-        parts = keyword.split()
         search_keyword = ""
         max_pages = 1
         MAX_PAGE_LIMIT = 5 
 
-        if len(parts) > 1 and parts[-1].isdigit():
-            search_keyword = " ".join(parts[:-1])
-            max_pages = max(1, min(int(parts[-1]), MAX_PAGE_LIMIT))
+        # 检查最后一个参数是否为数字（页数）
+        if len(args) > 1 and args[-1].isdigit():
+            search_keyword = " ".join(args[:-1])
+            max_pages = max(1, min(int(args[-1]), MAX_PAGE_LIMIT))
         else:
-            search_keyword = keyword
+            search_keyword = " ".join(args)
         
+        # 理论上，如果 args 非空，search_keyword 也不会为空，但作为安全检查
         if not search_keyword:
-            yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词>")
+            yield the_real_event_obj.plain_result("关键词不能为空！\n用法：78dm <关键词> [页数]")
             return
 
-        yield the_real_event_obj.plain_result(f"正在为'{search_keyword}'搜索模型信息，请稍候...")
+        yield the_real_event_obj.plain_result(f'正在为"{search_keyword}"搜索模型信息，请稍候...')
 
         try:
             loop = asyncio.get_running_loop()
