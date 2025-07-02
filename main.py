@@ -30,14 +30,15 @@ def extract_product_info_from_html(product_element):
         
         image_url = ""
         img_element = product_element.select_one('img.single-cover')
-        if img_element and 'src' in img_element.attrs:
-            src = img_element['src']
-            if src.startswith('//'):
-                image_url = 'https:' + src
-            elif src.startswith('/'):
-                image_url = 'https://www.78dm.net' + src
-            else:
-                image_url = src
+        if img_element:
+            src = img_element.get('data-src') or img_element.get('src')
+            if src:
+                if src.startswith('//'):
+                    image_url = 'https:' + src
+                elif src.startswith('/'):
+                    image_url = 'https://www.78dm.net' + src
+                else:
+                    image_url = src
         
         product_url = ""
         link_element = product_element.parent
