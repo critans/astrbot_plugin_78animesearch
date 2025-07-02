@@ -3,7 +3,7 @@
 import asyncio
 import warnings
 import urllib.parse
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from urllib3.exceptions import InsecureRequestWarning
 
@@ -64,31 +64,32 @@ def fetch_products_from_78dm(keyword: str, max_pages: int = 1):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    for page in range(1, max_pages + 1):
-        url = f"https://www.78dm.net/search?page={page}&type=3&keyword={encoded_keyword}"
-        logger.info(f"[78animeSearch] 正在爬取页面: {url}")
-        try:
-            response = requests.get(url, headers=headers, verify=False, timeout=20)
-            if response.status_code != 200:
-                logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
-                continue
+    with httpx.Client(verify=False, timeout=20) as client:
+        for page in range(1, max_pages + 1):
+            url = f"https://www.78dm.net/search?page={page}&type=3&keyword={encoded_keyword}"
+            logger.info(f"[78animeSearch] 正在爬取页面: {url}")
+            try:
+                response = client.get(url, headers=headers)
+                if response.status_code != 200:
+                    logger.warning(f"[78animeSearch] 请求失败，状态码: {response.status_code} for URL: {url}")
+                    continue
 
-            soup = BeautifulSoup(response.text, 'html.parser')
-            product_elements = soup.select('.card.is-shadowless')
+                soup = BeautifulSoup(response.text, 'html.parser')
+                product_elements = soup.select('.card.is-shadowless')
 
-            if not product_elements:
-                logger.info(f"[78animeSearch] 第{page}页没有找到产品元素，停止爬取。")
+                if not product_elements:
+                    logger.info(f"[78animeSearch] 第{page}页没有找到产品元素，停止爬取。")
+                    break
+                
+                for element in product_elements:
+                    product_info = extract_product_info_from_html(element)
+                    if product_info:
+                        products.append(product_info)
+                
+            except Exception as e:
+                logger.error(f"[78animeSearch] 爬取第{page}页数据时出错: {e}")
                 break
-            
-            for element in product_elements:
-                product_info = extract_product_info_from_html(element)
-                if product_info:
-                    products.append(product_info)
-            
-        except Exception as e:
-            logger.error(f"[78animeSearch] 爬取第{page}页数据时出错: {e}")
-            break
-            
+                
     return products
 
 # --- astrbot 插件主类 ---
